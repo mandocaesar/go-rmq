@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"go-rmq/infrastructure/common/config"
+	"log"
 	"sync/atomic"
 	"time"
 
@@ -35,28 +36,28 @@ func Dial(url string) (*Connection, error) {
 			reason, ok := <-connection.Connection.NotifyClose(make(chan *amqp.Error))
 			// exit this goroutine if closed by developer
 			if !ok {
-				log.Info(context.Background(), "connection closed intentionally")
+				log.Println(context.Background(), "connection closed intentionally")
 				break
 			}
 
-			log.Infof("connection closed, reason: %v", reason)
+			log.Println("connection closed, reason: %v", reason)
 
 			// reconnect if not closed by developer
 			for {
-				log.Infof("wait %vs for reconnect", config.RABBITMQ_RECONNECTION_DELAY_SECONDS)
+				log.Println("wait %vs for reconnect", config.RABBITMQ_RECONNECTION_DELAY_SECONDS)
 
 				time.Sleep(time.Duration(config.RABBITMQ_RECONNECTION_DELAY_SECONDS) * time.Second)
 
-				log.Info("reconnecting...")
+				log.Println("reconnecting...")
 
 				conn, err := amqp.Dial(url)
 				if err == nil {
 					connection.Connection = conn
-					log.Info("reconnection success..")
+					log.Println("reconnection success..")
 					break
 				}
 
-				log.StdError(context.Background(), map[string]interface{}{"url": url}, err, "reconnect failed")
+				log.Println(context.Background(), map[string]interface{}{"url": url}, err, "reconnect failed")
 			}
 		}
 	}()
@@ -80,29 +81,29 @@ func (c *Connection) Channel() (*Channel, error) {
 			reason, ok := <-channel.Channel.NotifyClose(make(chan *amqp.Error))
 			// exit this goroutine if closed by developer
 			if !ok || channel.IsClosed() {
-				log.Info("channel closed intentionally")
+				log.Println("channel closed intentionally")
 				channel.Close() // close again, ensure closed flag set when connection closed
 				break
 			}
 
-			log.Infof("channel closed, reason: %v", reason)
+			log.Println("channel closed, reason: %v", reason)
 
 			// reconnect if not closed by developer
 			for {
-				log.Infof("wait %vs for reconnect", config.RABBITMQ_RECONNECTION_DELAY_SECONDS)
+				log.Println("wait %vs for reconnect", config.RABBITMQ_RECONNECTION_DELAY_SECONDS)
 
 				time.Sleep(time.Duration(config.RABBITMQ_RECONNECTION_DELAY_SECONDS) * time.Second)
 
-				log.Info("reconnecting...")
+				log.Println("reconnecting...")
 
 				ch, err := c.Connection.Channel()
 				if err == nil {
-					log.Info("channel recreate success")
+					log.Println("channel recreate success")
 					channel.Channel = ch
 					break
 				}
 
-				log.Info("channel recreate failed, err: %v", err)
+				log.Println("channel recreate failed, err: %v", err)
 			}
 		}
 
@@ -125,12 +126,12 @@ func (ch *Channel) Consume(queue, consumer string, autoAck, exclusive, noLocal, 
 		for {
 			d, err := ch.Channel.Consume(queue, consumer, autoAck, exclusive, noLocal, noWait, args)
 			if err != nil {
-				log.StdError(context.Background(), map[string]interface{}{"queue": queue,
+				log.Println(context.Background(), map[string]interface{}{"queue": queue,
 					"consumer": consumer, "autoAck": autoAck, "exclusive": exclusive, "noLocal": noLocal, "noWait": noWait, "args": args}, err, "reconsuming failed")
 				time.Sleep(time.Duration(config.RABBITMQ_RECONNECTION_DELAY_SECONDS) * time.Second)
 				continue
 			}
-			log.Infof("consume success..")
+			log.Println("consume success..")
 
 			for msg := range d {
 				deliveries <- msg
