@@ -13,18 +13,19 @@ type ConsumerHandler func(err error)
 type Consumer struct {
 	Instance         *kafka.Consumer
 	BootstrapServers string
+	PollTime         int
 }
 
 type KafkaConsumerHandler func(event interface{}, err error)
 
-func NewConsumer(bootstrapServer, groupID string) *Consumer {
+func NewConsumer(bootstrapServer, groupID string, polltime int) *Consumer {
 	_instance, _ := kafka.NewConsumer(&kafka.ConfigMap{
 		"bootstrap.servers": bootstrapServer,
 		"group.id":          groupID,
 		"auto.offset.reset": "earliest",
 	})
 
-	return &Consumer{Instance: _instance, BootstrapServers: bootstrapServer}
+	return &Consumer{Instance: _instance, BootstrapServers: bootstrapServer, PollTime: polltime}
 }
 
 func (c *Consumer) Consume(handler KafkaConsumerHandler, topic string) (err error) {
@@ -40,14 +41,14 @@ func (c *Consumer) Consume(handler KafkaConsumerHandler, topic string) (err erro
 
 	// Start consuming messages
 	run := true
-	for run == true {
+	for run {
 		select {
 		case sig := <-sigchan:
 			fmt.Printf("Received signal %v: terminating\n", sig)
 			run = false
 		default:
 			// Poll for Kafka messages
-			ev := c.Instance.Poll(100)
+			ev := c.Instance.Poll(c.PollTime)
 			if ev == nil {
 				continue
 			}
