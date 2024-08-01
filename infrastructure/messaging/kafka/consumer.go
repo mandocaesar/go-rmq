@@ -56,10 +56,10 @@ func (c *Consumer) Consume(handler KafkaConsumerHandler, topic string) (err erro
 			switch e := ev.(type) {
 			case *kafka.Message:
 				// Process the consumed message
-				fmt.Printf("Received message from topic %s: %s\n", *e.TopicPartition.Topic, string(e.Value))
+				handler(e.Value, nil)
 			case kafka.Error:
 				// Handle Kafka errors
-				fmt.Printf("Error: %v\n", e)
+				handler(nil, e)
 			}
 		}
 	}
