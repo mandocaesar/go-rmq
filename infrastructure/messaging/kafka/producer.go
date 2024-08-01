@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/gob"
 	"fmt"
-	"time"
 
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 )
@@ -16,9 +15,11 @@ type Producer struct {
 	TotalMsgcnt      int
 }
 
-func NewProducser(bootstrapServers string, totalMessageCount int) *Producer {
+func NewProducer(bootstrapServers string, totalMessageCount int) *Producer {
+	_instance, _ := kafka.NewProducer(&kafka.ConfigMap{"bootstrap.servers": bootstrapServers})
+
 	return &Producer{
-		Instance:         kafka.Producer{},
+		Instance:         *_instance,
 		BootstrapServers: bootstrapServers,
 		TotalMsgcnt:      totalMessageCount,
 	}
@@ -44,7 +45,7 @@ func (p *Producer) Listen() {
 	}()
 }
 
-func (p *Producer) Publish(ctx context.Context, event interface{}, topic string) (err error) {
+func (p *Producer) Publish(ctx context.Context, event Message, topic string) (err error) {
 	//create buffer for temporary storage of event bytes
 	var buf bytes.Buffer
 	//initiate gob encoder
@@ -55,21 +56,29 @@ func (p *Producer) Publish(ctx context.Context, event interface{}, topic string)
 	}
 
 	//publish event to kafka
-	err = p.Instance.Produce(&kafka.Message{
+	kafkaMessage := &kafka.Message{
 		TopicPartition: kafka.TopicPartition{Topic: &topic, Partition: kafka.PartitionAny},
 		Value:          buf.Bytes(),
 		Headers:        []kafka.Header{{Key: "myTestHeader", Value: []byte("header values are binary")}},
-	}, nil)
-
-	//catch any errors
-	if err != nil {
-		if err.(kafka.Error).Code() == kafka.ErrQueueFull {
-			// Producer queue is full, wait 1s for messages
-			// to be delivered then try again.
-			time.Sleep(time.Second)
-		}
-		fmt.Printf("Failed to produce message: %v\n", err)
 	}
+
+	deliveryChan := make(chan kafka.Event)
+	err = p.Instance.Produce(kafkaMessage, deliveryChan)
+	if err != nil {
+		return fmt.Errorf("failed to produce message: %w", err)
+	}
+
+	// Wait for delivery report or error
+	e := <-deliveryChan
+	m := e.(*kafka.Message)
+
+	// Check for delivery errors
+	if m.TopicPartition.Error != nil {
+		return fmt.Errorf("delivery failed: %s", m.TopicPartition.Error)
+	}
+
+	// Close the delivery channel
+	close(deliveryChan)
 
 	return nil
 }
